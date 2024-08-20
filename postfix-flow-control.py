@@ -46,7 +46,7 @@ def main():
         break
     else:
         logger.critical("Failed to obtain lock")
-        sys.exit(1)
+        return 1
 
     now = time()
     try:
