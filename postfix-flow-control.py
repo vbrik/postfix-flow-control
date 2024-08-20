@@ -79,6 +79,6 @@ def main():
 if __name__ == "__main__":
     try:
         sys.exit(main())
-    except:
-        logger.critical(f"{APP_NAME} ENCOUNTERED AN EXCEPTION")
+    except Exception as e:
+        logger.critical(f"{APP_NAME} ENCOUNTERED AN EXCEPTION {e}")
         raise
