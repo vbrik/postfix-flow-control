@@ -1,39 +1,39 @@
 #!/usr/bin/env python3
 import argparse
-import sys
 import logging
 import pickle
-from time import time, sleep
-from bisect import bisect
-import subprocess
 import shlex
 import socket
+import subprocess
+import sys
+
+from bisect import bisect
 from logging.handlers import SysLogHandler
-from contextlib import suppress
-import json
+from time import time, sleep
 
-
-DISABLED_MESSAGE = "postfix-flow-control-engaged"
+APP_NAME = "postfix-flow-control"
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger('postfix-flow-control')
+logger = logging.getLogger(APP_NAME)
 logger.addHandler(SysLogHandler(address='/dev/log'))
 
 
 def main():
     parser = argparse.ArgumentParser(
-            description="",
-            formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument("--time-horizon", type=lambda x: int(x)*60*60, metavar="HOURS",
-                        help="count events that occurred up to this many HOURS ago")
-    parser.add_argument("--count-limit", type=int, default=4000, metavar='NUMBER',
+        description="Simple script to pause mail delivery if too many messages were"
+                    " delivered over a (long) period of time. The original motivation"
+                    " was to have a mechanism to keep Gmail from imposing bulk sender"
+                    " restrictions on us. For this to work, postfix needs to be configured"
+                    " to always_bcc to a user, and that user's .procmailrc needs to call "
+                    " this script. THIS IS A HACK THAT MESSES WITH PUPPET AND POSTFIX.",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument("--time-horizon", type=int, default=86400, metavar="SECONDS",
+                        help="count events that occurred up to this many SECONDS ago")
+    parser.add_argument("--count-limit", type=int, default=3500, metavar='NUMBER',
                         help="maximum permissible count of events before the horizon")
     parser.add_argument("--backoff", type=int, metavar='SECONDS', default=600,
-                        help="amount of time by which to defer deliveries")
+                        help="duration to pause deliveries")
     parser.add_argument("--history", metavar="PATH", default="/var/tmp/postfix-flow-control.pkl",
                         help="history file")
-    parser.add_argument("--puppet-lockfile", metavar="PATH",
-                        default="/opt/puppetlabs/puppet/cache/state/agent_disabled.lock",
-                        help="path to puppet agent disabled lockfile")
     args = parser.parse_args()
 
     lock = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
@@ -50,7 +50,7 @@ def main():
 
     now = time()
     try:
-        with open(args.state, "rb") as f:
+        with open(args.history, "rb") as f:
             history = pickle.load(f)
     except FileNotFoundError:
         history = []
@@ -58,18 +58,11 @@ def main():
     history.append(now)
     cutoff = bisect(history, now - args.time_horizon)
     history = history[cutoff:]
-    with open(args.state, 'wb') as f:
-        pickle.dump(history, f)
 
     if len(history) > args.count_limit:
-        with suppress(FileNotFoundError):
-            agent_disabled = json.load(open(args.puppet_lockfile))
-            puppet_disabled = agent_disabled.get("disabled_message")
-
-        if puppet_disabled == DISABLED_MESSAGE:
-            return 0
-
-        subprocess.run(shlex.split(f"sudo puppet agent --disable {DISABLED_MESSAGE}")
+        logger.warning(f"DEFERRING MAIL TRANSPORTS. Processed {len(history)} >"
+                       f" {args.count_limit} in the last {args.time_horizon / 60 / 60} hours.")
+        subprocess.run(shlex.split(f"sudo puppet agent --disable '{APP_NAME}'"))
         subprocess.run(shlex.split("sudo postconf -e defer_transports=smtp"))
         subprocess.run(shlex.split("sudo postfix reload"))
         subprocess.Popen(['bash', '-c', f'sleep {args.backoff};'
@@ -79,8 +72,13 @@ def main():
                                         f' sudo puppet agent --enable'],
                          start_new_session=True)
 
+    with open(args.history, 'wb') as f:
+        pickle.dump(history, f)
 
 
 if __name__ == "__main__":
-    sys.exit(main())
-
+    try:
+        sys.exit(main())
+    except:
+        logger.critical(f"{APP_NAME} ENCOUNTERED AN EXCEPTION")
+        raise
