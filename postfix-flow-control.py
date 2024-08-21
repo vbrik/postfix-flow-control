@@ -10,17 +10,20 @@ from logging.handlers import SysLogHandler
 from datetime import datetime, timedelta
 from subprocess import check_output
 
+# This is used in logwatch rules, so keep them in sync
 APP_NAME = "POSTFIX-FLOW-CONTROL"
 logger = logging.getLogger(APP_NAME)
 logger.addHandler(SysLogHandler(address='/dev/log'))
 
 
 # Can't control syslog format, so include details in message
+# This is used in logwatch rules, so keep them in sync
 def critical(msg):
     logger.critical(f"{APP_NAME} CRITICAL {msg}")
 
 
 # Can't control syslog format, so include details in message
+# This is used in logwatch rules, so keep them in sync
 def warning(msg):
     logger.warning(f"{APP_NAME} WARNING {msg}")
 
