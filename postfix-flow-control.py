@@ -70,7 +70,7 @@ def main():
     recent_relays = [line for line in relay_logs
                      if now - get_timestamp(line) < time_window]
 
-    postfix_is_deferring = b"smtp" in check_output("postconf -h defer_transports".split())
+    postfix_is_deferring = b"smtp" in check_output("/usr/sbin/postconf -h defer_transports".split())
     try:
         agent_disabled = open("/opt/puppetlabs/puppet/cache/state/agent_disabled.lock").read()
         puppet_is_disabled = APP_NAME in agent_disabled
@@ -80,11 +80,11 @@ def main():
     if postfix_is_deferring:
         if len(recent_relays) < 0.9 * args.relay_count_limit:
             warning(f"RESUMING MAIL TRANSPORTS")
-            subprocess.run("postconf -e defer_transports=".split())
-            subprocess.run("postfix reload".split())
-            subprocess.run("postfix flush".split())
+            subprocess.run("/usr/sbin/postconf -e defer_transports=".split())
+            subprocess.run("/usr/sbin/postfix reload".split())
+            subprocess.run("/usr/sbin/postfix flush".split())
             if puppet_is_disabled:
-                subprocess.run("puppet agent --enable".split())
+                subprocess.run("/opt/puppetlabs/bin/puppet agent --enable".split())
     # if postfix is not deferring
     elif len(recent_relays) > args.relay_count_limit:
         if len(recent_relays) > 2 * args.relay_count_limit:
@@ -93,9 +93,9 @@ def main():
         warning(f"DEFERRING MAIL TRANSPORTS. Processed {len(recent_relays)} >"
                 f" {args.relay_count_limit} in the last {args.time_window / 60 / 60} hours.")
 
-        subprocess.run(shlex.split(f"sudo puppet agent --disable '{APP_NAME}'"))
-        subprocess.run("postconf -e defer_transports=smtp".split())
-        subprocess.run("postfix reload".split())
+        subprocess.run(shlex.split(f"/opt/puppetlabs/bin/puppet agent --disable '{APP_NAME}'"))
+        subprocess.run("/usr/sbin/postconf -e defer_transports=smtp".split())
+        subprocess.run("/usr/sbin/postfix reload".split())
 
 
 if __name__ == "__main__":
