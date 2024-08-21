@@ -102,5 +102,5 @@ if __name__ == "__main__":
     try:
         sys.exit(main())
     except Exception as e:
-        critical(f"{APP_NAME} ENCOUNTERED AN EXCEPTION {e}")
+        critical(f"EXCEPTION {e}")
         raise
