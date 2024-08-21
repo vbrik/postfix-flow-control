@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 import argparse
 import logging
+import os
+import os.path
 import pickle
 import shlex
 import socket
@@ -8,6 +10,7 @@ import subprocess
 import sys
 
 from bisect import bisect
+from contextlib import suppress
 from logging.handlers import SysLogHandler
 from time import time, sleep
 
@@ -19,7 +22,8 @@ logger.addHandler(SysLogHandler(address='/dev/log'))
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Simple script to pause mail delivery if too many messages were"
+        description="XXX this doesn't really work."
+                    "Simple script to pause mail delivery if too many messages were"
                     " delivered over a (long) period of time. The original motivation"
                     " was to have a mechanism to keep Gmail from imposing bulk sender"
                     " restrictions on us. For this to work, postfix needs to be configured"
@@ -32,9 +36,11 @@ def main():
                         help="maximum permissible count of events before the horizon")
     parser.add_argument("--backoff", type=int, metavar='SECONDS', default=600,
                         help="duration to pause deliveries")
-    parser.add_argument("--history", metavar="PATH", default="/var/tmp/postfix-flow-control.pkl",
-                        help="history file")
+    parser.add_argument("--history", metavar="FILENAME", default="postfix-flow-control-history.pkl",
+                        help="history file, relative to procmail's $MAILDIR environment variable")
     args = parser.parse_args()
+
+    history_path = os.path.join(os.environ['MAILDIR'], args.history)
 
     lock = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
     for attempt in range(10):
@@ -50,7 +56,7 @@ def main():
 
     now = time()
     try:
-        with open(args.history, "rb") as f:
+        with open(history_path, "rb") as f:
             history = pickle.load(f)
     except FileNotFoundError:
         history = []
@@ -62,6 +68,8 @@ def main():
     if len(history) > args.count_limit:
         logger.warning(f"DEFERRING MAIL TRANSPORTS. Processed {len(history)} >"
                        f" {args.count_limit} in the last {args.time_horizon / 60 / 60} hours.")
+        with suppress(FileNotFoundError):
+
         subprocess.run(shlex.split(f"sudo puppet agent --disable '{APP_NAME}'"))
         subprocess.run(shlex.split("sudo postconf -e defer_transports=smtp"))
         subprocess.run(shlex.split("sudo postfix reload"))
@@ -72,7 +80,7 @@ def main():
                                         f' sudo puppet agent --enable'],
                          start_new_session=True)
 
-    with open(args.history, 'wb') as f:
+    with open(history_path, 'wb') as f:
         pickle.dump(history, f)
 
 
